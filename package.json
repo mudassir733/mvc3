@@ -6,6 +6,7 @@
   "bin": {
     "mvc3": "./bin/index.js"
   },
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,6 +16,7 @@
   "dependencies": {
     "chalk": "^5.6.0",
     "commander": "^14.0.0",
+    "fs-extra": "^11.3.1",
     "inquirer": "^12.9.4",
     "ora": "^8.2.0"
   }

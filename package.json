@@ -1,0 +1,21 @@
+{
+  "name": "mvc3",
+  "version": "1.0.0",
+  "description": "A CLI tool to generate MVC/3-layer Node.js projects",
+  "main": "index.js",
+  "bin": {
+    "mvc3": "./bin/index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.6.0",
+    "commander": "^14.0.0",
+    "inquirer": "^12.9.4",
+    "ora": "^8.2.0"
+  }
+}

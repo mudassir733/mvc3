@@ -31,6 +31,12 @@ program
       },
       {
         type: "confirm",
+        name: "starter",
+        message: "Do you want to create a starter CRUD template?",
+        default: true
+      },
+      {
+        type: "confirm",
         name: "nodemon",
         message: "Use Nodemon for dev?",
         default: true
@@ -66,6 +72,9 @@ program
       const srcDir = path.join(projectPath, "src");
       await fs.ensureDir(srcDir);
 
+      const isTS = answers.language === "TypeScript";
+      const ext = isTS ? "ts" : "js";
+
       const baseFolders =
         answers.architecture === "3-Layer MVC"
           ? ["controllers", "services", "models", "routes", "config", "validation", "utils", "templates"]
@@ -75,21 +84,17 @@ program
         await fs.ensureDir(path.join(srcDir, folder));
       }
 
-      // app files
-      const isTS = answers.language === "TypeScript";
-      const appExt = isTS ? "ts" : "js";
-      const appContent = `
+      // app file
+      const appContentTS = `
 import express from "express";
 import dotenv from "dotenv";
+${answers.starter ? `import userRoutes from "./routes/user.routes";` : ""}
 
 dotenv.config();
 const app = express();
 app.use(express.json());
 
-// routes
-app.get("/", (_req, res) => {
-  res.send("Hello World!");
-});
+${answers.starter ? `app.use("/api/users", userRoutes);` : `app.get("/", (_req, res) => { res.send("Hello World!"); });`}
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
@@ -97,21 +102,221 @@ app.listen(PORT, () => {
 });
       `.trim();
 
-      await fs.writeFile(path.join(srcDir, `app.${appExt}`), appContent);
+      const appContentJS = `
+import express from "express";
+import dotenv from "dotenv";
+${answers.starter ? `import userRoutes from "./routes/user.routes.js";` : ""}
 
-      // basic route file
-      const routeContent = `
-import { Router } from "express";
-const router = Router();
+dotenv.config();
+const app = express();
+app.use(express.json());
 
-router.get("/health", (_req, res) => {
-  res.json({ ok: true });
+${answers.starter ? `app.use("/api/users", userRoutes);` : `app.get("/", (_req, res) => { res.send("Hello World!"); });`}
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(\`Server running on port \${PORT}\`);
 });
-
-export default router;
       `.trim();
 
-      await fs.writeFile(path.join(srcDir, "routes", `index.${appExt}`), routeContent);
+      await fs.writeFile(
+        path.join(srcDir, `app.${ext}`),
+        isTS ? appContentTS : appContentJS
+      );
+
+      // starter CRUD files
+      if (answers.starter) {
+        // service
+        const serviceContentTS = `
+type User = { id: string; name: string; email: string };
+
+let users: User[] = [];
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export default {
+  async list() {
+    return users;
+  },
+  async getById(id: string) {
+    return users.find(u => u.id === id) || null;
+  },
+  async create(data: { name: string; email: string }) {
+    const user: User = { id: makeId(), ...data };
+    users.push(user);
+    return user;
+  },
+  async update(id: string, data: Partial<Omit<User, "id">>) {
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return null;
+    users[idx] = { ...users[idx], ...data };
+    return users[idx];
+  },
+  async remove(id: string) {
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return false;
+    users.splice(idx, 1);
+    return true;
+  }
+};
+        `.trim();
+
+        const serviceContentJS = `
+let users = [];
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export default {
+  async list() {
+    return users;
+  },
+  async getById(id) {
+    return users.find(u => u.id === id) || null;
+  },
+  async create(data) {
+    const user = { id: makeId(), ...data };
+    users.push(user);
+    return user;
+  },
+  async update(id, data) {
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return null;
+    users[idx] = { ...users[idx], ...data };
+    return users[idx];
+  },
+  async remove(id) {
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return false;
+    users.splice(idx, 1);
+    return true;
+  }
+};
+        `.trim();
+
+        await fs.writeFile(
+          path.join(srcDir, "services", `user.service.${ext}`),
+          isTS ? serviceContentTS : serviceContentJS
+        );
+
+        // controller
+        const controllerContentTS = `
+import { Request, Response } from "express";
+import userService from "../services/user.service";
+
+export default {
+  async list(req: Request, res: Response) {
+    const data = await userService.list();
+    res.json(data);
+  },
+
+  async getById(req: Request, res: Response) {
+    const item = await userService.getById(req.params.id);
+    if (!item) return res.status(404).json({ message: "User not found" });
+    res.json(item);
+  },
+
+  async create(req: Request, res: Response) {
+    const { name, email } = req.body;
+    const item = await userService.create({ name, email });
+    res.status(201).json(item);
+  },
+
+  async update(req: Request, res: Response) {
+    const { name, email } = req.body;
+    const item = await userService.update(req.params.id, { name, email });
+    if (!item) return res.status(404).json({ message: "User not found" });
+    res.json(item);
+  },
+
+  async remove(req: Request, res: Response) {
+    const ok = await userService.remove(req.params.id);
+    if (!ok) return res.status(404).json({ message: "User not found" });
+    res.status(204).send();
+  }
+};
+        `.trim();
+
+        const controllerContentJS = `
+import userService from "../services/user.service.js";
+
+export default {
+  async list(_req, res) {
+    const data = await userService.list();
+    res.json(data);
+  },
+
+  async getById(req, res) {
+    const item = await userService.getById(req.params.id);
+    if (!item) return res.status(404).json({ message: "User not found" });
+    res.json(item);
+  },
+
+  async create(req, res) {
+    const { name, email } = req.body;
+    const item = await userService.create({ name, email });
+    res.status(201).json(item);
+  },
+
+  async update(req, res) {
+    const { name, email } = req.body;
+    const item = await userService.update(req.params.id, { name, email });
+    if (!item) return res.status(404).json({ message: "User not found" });
+    res.json(item);
+  },
+
+  async remove(req, res) {
+    const ok = await userService.remove(req.params.id);
+    if (!ok) return res.status(404).json({ message: "User not found" });
+    res.status(204).send();
+  }
+};
+        `.trim();
+
+        await fs.writeFile(
+          path.join(srcDir, "controllers", `user.controller.${ext}`),
+          isTS ? controllerContentTS : controllerContentJS
+        );
+
+        // routes
+        const routesContentTS = `
+import { Router } from "express";
+import userController from "../controllers/user.controller";
+
+const router = Router();
+
+router.get("/", userController.list);
+router.get("/:id", userController.getById);
+router.post("/", userController.create);
+router.put("/:id", userController.update);
+router.delete("/:id", userController.remove);
+
+export default router;
+        `.trim();
+
+        const routesContentJS = `
+import { Router } from "express";
+import userController from "../controllers/user.controller.js";
+
+const router = Router();
+
+router.get("/", userController.list);
+router.get("/:id", userController.getById);
+router.post("/", userController.create);
+router.put("/:id", userController.update);
+router.delete("/:id", userController.remove);
+
+export default router;
+        `.trim();
+
+        await fs.writeFile(
+          path.join(srcDir, "routes", `user.routes.${ext}`),
+          isTS ? routesContentTS : routesContentJS
+        );
+      }
 
       // package.json
       const pkgJson = isTS
@@ -120,9 +325,10 @@ export default router;
             version: "1.0.0",
             description: "",
             main: "dist/app.js",
-            // no "type": "module" -> keep CommonJS at runtime
             scripts: {
-              dev: answers.nodemon ? "nodemon" : "node -r ts-node/register/transpile-only src/app.ts",
+              dev: answers.nodemon
+                ? "nodemon"
+                : "node -r ts-node/register/transpile-only src/app.ts",
               build: "tsc",
               start: "node dist/app.js"
             }
@@ -136,7 +342,7 @@ export default router;
               dev: answers.nodemon ? "nodemon" : "node src/app.js",
               start: "node src/app.js"
             },
-            type: "module" // JS uses ESM nicely
+            type: "module"
           };
 
       await fs.writeJson(path.join(projectPath, "package.json"), pkgJson, { spaces: 2 });
@@ -182,16 +388,22 @@ export default router;
         await fs.writeJson(path.join(projectPath, "tsconfig.json"), tsConfig, { spaces: 2 });
       }
 
-      // README quick hint
+      // README
       const readme = `
 # ${projectName}
+
+## Endpoints (users)
+- GET /api/users
+- GET /api/users/:id
+- POST /api/users
+- PUT /api/users/:id
+- DELETE /api/users/:id
 
 ## Dev
 ${isTS ? "- \`npm run dev\` runs nodemon with ts-node.\n" : "- \`npm run dev\` runs nodemon."}
 
-## Build
+## Build (TS)
 ${isTS ? "- \`npm run build\` compiles to \`dist/\`.\n- \`npm start\` runs compiled JS.\n" : ""}
-
       `.trim();
       await fs.writeFile(path.join(projectPath, "README.md"), readme + "\n");
 
